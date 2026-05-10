@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<!-- Métas PWA / iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Compte à Rebours">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>Compte à Rebours</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    background: linear-gradient(145deg, #0B1120 0%, #111827 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+    padding: 16px;
+  }
+  .card {
+    background: rgba(18, 25, 40, 0.85);
+    backdrop-filter: blur(12px);
+    border-radius: 48px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 32px 24px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 25px 45px -12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: transform 0.2s;
+  }
+  .time-remaining {
+    font-size: 3.8rem;
+    font-weight: 700;
+    text-align: center;
+    font-family: 'SF Mono', 'JetBrains Mono', monospace;
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, #FFFFFF, #A5B4FC);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 16px;
+    word-break: break-word;
+  }
+  .target-time {
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #94A3B8;
+    margin-bottom: 32px;
+    background: rgba(0,0,0,0.3);
+    display: inline-block;
+    width: auto;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 6px 16px;
+    border-radius: 60px;
+    backdrop-filter: blur(4px);
+    letter-spacing: 0.5px;
+  }
+  .buttons { display: flex; flex-direction: column; gap: 14px; }
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    border: none;
+    background: rgba(255,255,255,0.08);
+    color: white;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  button:active { transform: scale(0.97); background: rgba(59,130,246,0.6); }
+  .btn-primary { background: #3B82F6; box-shadow: 0 4px 12px rgba(59,130,246,0.3); border: none; }
+  .btn-primary:active { background: #2563EB; }
+  .btn-secondary { background: #10B981; }
+  .btn-secondary:active { background: #059669; }
+  .btn-tertiary { background: #475569; }
+  .btn-tertiary:active { background: #334155; }
+
+  .time-picker-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    background: #1F2937;
+    backdrop-filter: blur(20px);
+    border-radius: 48px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    z-index: 1000;
+    opacity: 0;
+    transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1), opacity 0.2s;
+    border: 1px solid rgba(255,255,255,0.2);
+    width: 280px;
+    box-shadow: 0 25px 40px -10px black;
+  }
+  .time-picker-popup.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  .time-picker-popup input {
+    background: #0F172A;
+    border: 1px solid #334155;
+    padding: 14px;
+    font-size: 1.4rem;
+    text-align: center;
+    border-radius: 60px;
+    color: white;
+    font-family: monospace;
+    font-weight: 600;
+  }
+  .time-picker-popup button { margin-top: 4px; background: #3B82F6; padding: 12px; font-size: 1rem; }
+  @media (max-width: 450px) {
+    .card { padding: 24px 16px; }
+    .time-remaining { font-size: 2.8rem; letter-spacing: 2px; }
+    button { padding: 14px 16px; font-size: 1rem; }
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="time-remaining" id="timeRemaining">00:00:00</div>
+  <div class="target-time" id="targetTime">⚡ CIBLE : --:--</div>
+  <div class="buttons">
+    <button class="btn-primary" id="chooseBtn">⏰ CHOISIR L’HEURE</button>
+    <button class="btn-secondary" id="startBtn">▶ DÉMARRER</button>
+    <button class="btn-tertiary" id="resetBtn">🔄 RÉINITIALISER</button>
+  </div>
+</div>
+<div class="time-picker-popup" id="timePickerPopup">
+  <input type="time" id="timeInput" value="20:30">
+  <button id="confirmTimeBtn">Valider</button>
+</div>
+
+<script>
+  // ---------- LOGIQUE (inchangée, avec localStorage) ----------
+  let countdownInterval;
+  let targetDate = null;
+
+  function updateDisplay() {
+    const display = document.getElementById("timeRemaining");
+    if (!targetDate) { display.textContent = "00:00:00"; return; }
+    const now = new Date();
+    let diff = targetDate - now;
+    if (diff <= 0) {
+      display.textContent = "00:00:00";
+      clearInterval(countdownInterval);
+      localStorage.removeItem('targetDate');
+      document.getElementById("targetTime").textContent = "⚡ CIBLE : --:--";
+      return;
+    }
+    const hours = Math.floor(diff / 1000 / 3600);
+    const minutes = Math.floor((diff / 1000 % 3600) / 60);
+    const seconds = Math.floor(diff / 1000 % 60);
+    display.textContent = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+  }
+
+  function showTimePicker() { document.getElementById("timePickerPopup").classList.add("show"); document.getElementById("timeInput").focus(); }
+  function hideTimePicker() { document.getElementById("timePickerPopup").classList.remove("show"); }
+
+  function confirmTime() {
+    const timeValue = document.getElementById("timeInput").value;
+    if (!timeValue) return;
+    const [h, m] = timeValue.split(":").map(Number);
+    const now = new Date();
+    targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+    if (targetDate <= now) targetDate.setDate(targetDate.getDate() + 1);
+    const formattedTime = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    document.getElementById("targetTime").textContent = `🎯 CIBLE : ${formattedTime}`;
+    hideTimePicker();
+    localStorage.setItem('targetDate', targetDate.toString());
+    updateDisplay();
+    startCountdown();
+  }
+
+  function startCountdown() {
+    if (!targetDate) { showTimePicker(); return; }
+    clearInterval(countdownInterval);
+    updateDisplay();
+    countdownInterval = setInterval(updateDisplay, 1000);
+  }
+
+  function resetCountdown() {
+    clearInterval(countdownInterval);
+    targetDate = null;
+    document.getElementById("timeRemaining").textContent = "00:00:00";
+    document.getElementById("targetTime").textContent = "⚡ CIBLE : --:--";
+    hideTimePicker();
+    localStorage.removeItem('targetDate');
+  }
+
+  window.addEventListener('load', () => {
+    const saved = localStorage.getItem('targetDate');
+    if (saved) {
+      const parsed = new Date(saved);
+      if (!isNaN(parsed)) {
+        targetDate = parsed;
+        const hours = targetDate.getHours().toString().padStart(2,'0');
+        const minutes = targetDate.getMinutes().toString().padStart(2,'0');
+        document.getElementById("targetTime").textContent = `🎯 CIBLE : ${hours}:${minutes}`;
+        startCountdown();
+      }
+    }
+  });
+
+  document.getElementById("chooseBtn").addEventListener("click", showTimePicker);
+  document.getElementById("startBtn").addEventListener("click", startCountdown);
+  document.getElementById("resetBtn").addEventListener("click", resetCountdown);
+  document.getElementById("confirmTimeBtn").addEventListener("click", confirmTime);
+  document.getElementById("timePickerPopup").addEventListener("click", (e) => { if (e.target === document.getElementById("timePickerPopup")) hideTimePicker(); });
+</script>
+<script>
+  // Enregistrement du Service Worker depuis le fichier externe sw.js
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log("Service Worker enregistré", reg);
+    }).catch(err => console.error("Erreur SW :", err));
+  }
+</script>
+</body>
+</html>
